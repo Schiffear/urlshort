@@ -1,11 +1,11 @@
 import { defineConfig } from 'drizzle-kit';
+import * as dotenv from 'dotenv';
+
+dotenv.config(); // Charge les variables d'environnement
 
 export default defineConfig({
-  // The path to the directory where the generated files will be placed
   out: './drizzle',
-  // The path to the directory where the schema files are located
   schema: './server/database/schema',
-  // The path to the directory where the queries are located
   dialect: 'postgresql',
   dbCredentials: {
     url: process.env.DATABASE_URL!,

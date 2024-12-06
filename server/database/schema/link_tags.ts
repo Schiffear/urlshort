@@ -1,3 +1,18 @@
+import { integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { links } from "./links";
+import { tags } from "./tags";
+
+export const link_tags = pgTable(
+  'link_tags',
+  {
+    link_slug: text().references(() => links.slug).notNull(),
+    tag_id: text().references(() => tags.id).notNull(),
+  },
+  (columns) => ({
+    pk: primaryKey({ columns: [columns.link_slug, columns.tag_id] }),
+  })
+);
+
 // import { integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 // import { links } from "./links";
 // import { tags } from "./tags";
@@ -9,4 +24,3 @@
 //     pk: primaryKey({ columns: [columns.link_slug, columns.tag_id] }),
 //   }),
 // );
-  
