@@ -37,17 +37,6 @@ export default defineEventHandler(async (event) => {
     .returning()
     .then((res) => res[0]); // Récupérer l'élément inséré.
 
-      // Associer les tags si présents
-  if (body.tags && Array.isArray(body.tags)) {
-    for (const tagId of body.tags) {
-      // Insérer la relation entre le lien et les tags dans la table `link_tags`
-      await db.insert(link_tags).values({
-        link_slug: newLink.slug,
-        tag_id: tagId,
-      });
-    }
-  }
-
   // Retourner l'URL raccourcie
   return {
     statusCode: 201,

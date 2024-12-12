@@ -9,6 +9,8 @@ export default defineNitroConfig({
       clientSecret: '',
       redirectUri: '',
     },
+    jwt: {
+      jwt_secret: process.env.JWT_SECRET || '',    }
   },
 
   compatibilityDate: "2024-11-30",

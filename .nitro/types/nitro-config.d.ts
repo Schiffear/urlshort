@@ -17,6 +17,10 @@ declare module "nitropack/types" {
 
       redirectUri: string,
    },
+
+   jwt: {
+      jwt_secret: string,
+   },
   }
 }
 export {}

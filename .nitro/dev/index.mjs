@@ -19,8 +19,8 @@ import { z } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShorte
 import jwt from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/jsonwebtoken/index.js';
 import { klona } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/klona/dist/index.mjs';
 import { snakeCase } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/scule/dist/index.mjs';
+import { count, eq } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/drizzle-orm/index.js';
 import { nanoid } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/nanoid/index.js';
-import { eq } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/drizzle-orm/index.js';
 import { pgTable, text, integer, timestamp, primaryKey } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/drizzle-orm/pg-core/index.js';
 import { drizzle } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/drizzle-orm/node-postgres/index.js';
 
@@ -616,6 +616,9 @@ const _inlineRuntimeConfig = {
     "clientId": "",
     "clientSecret": "",
     "redirectUri": ""
+  },
+  "jwt": {
+    "jwt_secret": "09765a3505e4151d3bcb3d6f58f4d17d2d874862"
   }
 };
 const envOptions = {
@@ -947,7 +950,7 @@ const CodeSchema = z.object({
   code: z.string().min(1, { message: "Le code d'authentification est requis." })
 });
 const callback_get = defineEventHandler(async (event) => {
-  const { github } = useRuntimeConfig(event);
+  const config = useRuntimeConfig();
   const { code } = await getValidatedQuery(event, CodeSchema.parse);
   try {
     console.log("Demande de token GitHub...");
@@ -957,8 +960,10 @@ const callback_get = defineEventHandler(async (event) => {
         Accept: "application/json"
       },
       body: {
-        client_id: github.clientId,
-        client_secret: github.clientSecret,
+        client_id: config.github.clientId,
+        // Utiliser les variables de config
+        client_secret: config.github.clientSecret,
+        // Utiliser les variables de config
         code
         // Code récupéré depuis l'URL
       }
@@ -973,7 +978,7 @@ const callback_get = defineEventHandler(async (event) => {
     });
     console.log("Donn\xE9es utilisateur r\xE9cup\xE9r\xE9es:", userData);
     console.log("G\xE9n\xE9ration du token JWT...");
-    const tokenSecret = "09765a3505e4151d3bcb3d6f58f4d17d2d874862";
+    const tokenSecret = config.jwt.jwt_secret;
     const payload = {
       login: userData.login,
       // Identifiant GitHub
@@ -1023,6 +1028,16 @@ const login_get$1 = /*#__PURE__*/Object.freeze({
   default: login_get
 });
 
+const linksSchema = z.object({
+  slug: z.string().min(1, { message: "Le 'slug' est requis et doit \xEAtre une cha\xEEne non vide." }),
+  url: z.string().url({ message: "L'URL doit \xEAtre une URL valide." }),
+  title: z.string().min(1, { message: "Le 'title' est requis et doit \xEAtre une cha\xEEne non vide." }),
+  max_visits: z.number().int().optional(),
+  available_at: z.date().refine((date) => !isNaN(date.getTime()), { message: "La 'available_at' doit \xEAtre une date valide." }),
+  expired_at: z.date().refine((date) => !isNaN(date.getTime()), { message: "La 'expired_at' doit \xEAtre une date valide." }).optional(),
+  created_at: z.date().refine((date) => !isNaN(date.getTime()), { message: "La 'created_at' doit \xEAtre une date valide." }),
+  update_at: z.date().refine((date) => !isNaN(date.getTime()), { message: "La 'update_at' doit \xEAtre une date valide." })
+});
 const links = pgTable("links", {
   // Colonne 'slug' utilisée comme clé primaire
   slug: text().primaryKey(),
@@ -1041,18 +1056,36 @@ const links = pgTable("links", {
   // Colonne 'update_at' obligatoire pour la date/heure de dernière mise à jour du lien
   update_at: timestamp().notNull()
 });
+const validateLinkData = (data) => {
+  linksSchema.parse(data);
+};
 
+const tagsSchema = z.object({
+  id: z.number().int().min(1, { message: "L'id doit \xEAtre un entier valide." }),
+  name: z.string().min(1, { message: "Le 'name' est requis et doit \xEAtre une cha\xEEne non vide." }).max(255, { message: "Le 'name' ne peut pas d\xE9passer 255 caract\xE8res." }),
+  color: z.string().min(1, { message: "La 'color' est requise et doit \xEAtre une cha\xEEne non vide." })
+});
 const tags = pgTable("tags", {
-  // Colonne 'id' utilisée comme clé primaire, de type texte
+  // Colonne 'id' utilisée comme clé primaire
   id: integer().primaryKey(),
   // Colonne 'name' obligatoire et unique pour stocker le nom du tag
   name: text().unique().notNull(),
   // Colonne 'color' obligatoire pour stocker la couleur associée au tag
   color: text().notNull()
 });
+const validateTagData = (data) => {
+  tagsSchema.parse(data);
+};
 
+const visitsSchema = z.object({
+  id: z.string().min(1, { message: "L'ID doit \xEAtre une cha\xEEne non vide." }),
+  link_id: z.string().min(1, { message: "Le 'link_id' est requis et doit \xEAtre une cha\xEEne non vide." }),
+  created_at: z.date().refine((date) => !isNaN(date.getTime()), { message: "La 'created_at' doit \xEAtre une date valide." }),
+  ip: z.string().min(1, { message: "L'adresse IP est requise et doit \xEAtre une cha\xEEne non vide." }),
+  user_agent: z.string().min(1, { message: "Le 'user_agent' est requis et doit \xEAtre une cha\xEEne non vide." })
+});
 const visits = pgTable("visits", {
-  // Colonne 'id' utilisée comme clé primaire, de type texte
+  // Colonne 'id' utilisée comme clé primaire
   id: text().primaryKey(),
   // Colonne 'link_id' obligatoire pour faire référence au lien visité
   link_id: text().notNull(),
@@ -1063,7 +1096,14 @@ const visits = pgTable("visits", {
   // Colonne 'user_agent' obligatoire pour stocker les informations du User-Agent de l'utilisateur
   user_agent: text().notNull()
 });
+const validateVisitData = (data) => {
+  visitsSchema.parse(data);
+};
 
+const linkTagsSchema = z.object({
+  link_slug: z.string().min(1, { message: "Le 'link_slug' est requis et doit \xEAtre une cha\xEEne non vide." }),
+  tag_id: z.number().int().positive({ message: "Le 'tag_id' doit \xEAtre un entier positif." })
+});
 const link_tags = pgTable(
   "link_tags",
   // Nom de la table dans la base de données
@@ -1078,12 +1118,19 @@ const link_tags = pgTable(
     pk: primaryKey({ columns: [columns.link_slug, columns.tag_id] })
   })
 );
+const validateLinkTagData = (data) => {
+  linkTagsSchema.parse(data);
+};
 
 const schema = /*#__PURE__*/Object.freeze({
   __proto__: null,
   link_tags: link_tags,
   links: links,
   tags: tags,
+  validateLinkData: validateLinkData,
+  validateLinkTagData: validateLinkTagData,
+  validateTagData: validateTagData,
+  validateVisitData: validateVisitData,
   visits: visits
 });
 
@@ -1116,9 +1163,54 @@ const links_delete$1 = /*#__PURE__*/Object.freeze({
 });
 
 const links_get = eventHandler(async (event) => {
+  var _a;
   const db = useDrizzle();
-  const results = await db.query.links.findMany();
-  return results;
+  const { page = 1, limit = 3 } = getQuery$1(event);
+  const pageNumber = parseInt(page, 10);
+  const pageSize = parseInt(limit, 10);
+  if (isNaN(pageNumber) || pageNumber < 1) {
+    throw createError({
+      statusCode: 400,
+      // Code HTTP pour les requêtes incorrectes
+      message: "La page doit \xEAtre un nombre entier positif."
+      // Message d'erreur
+    });
+  }
+  if (isNaN(pageSize) || pageSize < 1) {
+    throw createError({
+      statusCode: 400,
+      // Code HTTP pour les requêtes incorrectes
+      message: "Le nombre de r\xE9sultats par page doit \xEAtre un nombre entier positif."
+      // Message d'erreur
+    });
+  }
+  const offset = (pageNumber - 1) * pageSize;
+  const results = await db.query.links.findMany({
+    limit: pageSize,
+    // Limiter le nombre de résultats à 'pageSize'
+    offset
+    // Appliquer le décalage pour sauter les résultats précédents
+  });
+  const totalLinksResult = await db.select({ count: count() }).from(links);
+  const totalLinks = ((_a = totalLinksResult[0]) == null ? void 0 : _a.count) || 0;
+  const totalPages = Math.ceil(totalLinks / pageSize);
+  return {
+    statusCode: 200,
+    // Code de statut HTTP pour une réponse réussie
+    body: {
+      // Corps de la réponse
+      data: results,
+      // Résultats des liens de la page actuelle
+      page: pageNumber,
+      // Numéro de la page actuelle
+      limit: pageSize,
+      // Nombre de résultats par page
+      total: totalLinks,
+      // Nombre total de liens dans la table
+      totalPages
+      // Nombre total de pages
+    }
+  };
 });
 
 const links_get$1 = /*#__PURE__*/Object.freeze({
@@ -1174,14 +1266,6 @@ const links_post = defineEventHandler(async (event) => {
     created_at: /* @__PURE__ */ new Date(),
     update_at: /* @__PURE__ */ new Date()
   }).returning().then((res) => res[0]);
-  if (body.tags && Array.isArray(body.tags)) {
-    for (const tagId of body.tags) {
-      await db.insert(link_tags).values({
-        link_slug: newLink.slug,
-        tag_id: tagId
-      });
-    }
-  }
   return {
     statusCode: 201,
     body: {

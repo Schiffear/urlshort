@@ -1,6 +1,13 @@
 import { integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 import { links } from "./links";
 import { tags } from "./tags";
+import { z } from "zod";
+
+// Schéma Zod pour valider les données de 'link_tags'
+const linkTagsSchema = z.object({
+  link_slug: z.string().min(1, { message: "Le 'link_slug' est requis et doit être une chaîne non vide." }),
+  tag_id: z.number().int().positive({ message: "Le 'tag_id' doit être un entier positif." }),
+});
 
 // Définition de la table d'association 'link_tags' pour gérer la relation many-to-many entre 'links' et 'tags'
 export const link_tags = pgTable(
@@ -17,3 +24,9 @@ export const link_tags = pgTable(
     pk: primaryKey({ columns: [columns.link_slug, columns.tag_id] }),
   })
 );
+
+// Fonction pour valider les données avant d'insérer dans la table
+export const validateLinkTagData = (data: { link_slug: string; tag_id: number }) => {
+  // Valide les données à l'aide du schéma Zod
+  linkTagsSchema.parse(data); // Si les données ne respectent pas le schéma, une erreur sera levée
+};
