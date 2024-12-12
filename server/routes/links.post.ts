@@ -1,6 +1,7 @@
 import { links } from "~/database/schema";
 import { useDrizzle } from "~/utils/drizzle";
 import { nanoid } from "nanoid"; // Génère un slug unique.
+import { link_tags } from "~/database/schema";
 
 export default defineEventHandler(async (event) => {
   const db = useDrizzle();
@@ -23,8 +24,8 @@ export default defineEventHandler(async (event) => {
     .values({
       url: String(body.url),
       slug: slug,
-      title: body.title || null, // Optionnel
-      max_visits: body.max_visits || null, // Optionnel
+      title: body.title || null, 
+      max_visits: body.max_visits || null,
       available_at: new Date(body.available_at || Date.now()),
       expired_at: body.expired_at ? new Date(body.expired_at) : null,
       created_at: new Date(),
@@ -33,12 +34,23 @@ export default defineEventHandler(async (event) => {
     .returning()
     .then((res) => res[0]); // Récupérer l'élément inséré.
 
+      // Associer les tags si présents
+  if (body.tags && Array.isArray(body.tags)) {
+    for (const tagId of body.tags) {
+      // Insérer la relation entre le lien et les tags dans la table `link_tags`
+      await db.insert(link_tags).values({
+        link_slug: newLink.slug,
+        tag_id: tagId,
+      });
+    }
+  }
+
   // Retourner l'URL raccourcie
   return {
     statusCode: 201,
     body: {
       message: "URL raccourcie créée avec succès.",
-      shortLink: `https://yourdomain.com/${newLink.slug}`, // Le lien court généré
+      shortLink: `http://localhost:3000/links/${newLink.slug}`, // Le lien court généré
       link: newLink,
     },
   };

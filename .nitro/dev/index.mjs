@@ -3,7 +3,7 @@ import { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parentPort, threadId } from 'node:worker_threads';
-import { getRequestHeader, splitCookiesString, setResponseHeader, setResponseStatus, send, defineEventHandler, handleCacheHeaders, createEvent, fetchWithEvent, isEvent, eventHandler, setHeaders, sendRedirect, proxyRequest, createApp, createRouter as createRouter$1, toNodeListener, lazyEventHandler, createError, getRouterParam, getQuery as getQuery$1, readBody } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/h3/dist/index.mjs';
+import { getRequestHeader, splitCookiesString, setResponseHeader, setResponseStatus, send, defineEventHandler, handleCacheHeaders, createEvent, fetchWithEvent, isEvent, eventHandler, setHeaders, sendRedirect, proxyRequest, createApp, createRouter as createRouter$1, toNodeListener, lazyEventHandler, createError, getRouterParam, getQuery as getQuery$1, readBody, getValidatedQuery } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/h3/dist/index.mjs';
 import { provider, isWindows } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/std-env/dist/index.mjs';
 import destr from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/destr/dist/index.mjs';
 import { createHooks } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/hookable/dist/index.mjs';
@@ -15,6 +15,8 @@ import { createStorage, prefixStorage } from 'file://C:/Users/PC/Downloads/UTL%2
 import unstorage_47drivers_47fs from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/unstorage/drivers/fs.mjs';
 import defu, { defuFn } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/defu/dist/defu.mjs';
 import { toRouteMatcher, createRouter } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/radix3/dist/index.mjs';
+import { z } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/zod/lib/index.mjs';
+import jwt from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/jsonwebtoken/index.js';
 import { klona } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/klona/dist/index.mjs';
 import { snakeCase } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/scule/dist/index.mjs';
 import { nanoid } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/nanoid/index.js';
@@ -941,7 +943,85 @@ parentPort?.on("message", async (msg) => {
   }
 });
 
+const CodeSchema = z.object({
+  code: z.string().min(1, { message: "Le code d'authentification est requis." })
+});
+const requireUser = async (event) => {
+  try {
+    const authHeader = event.headers["authorization"];
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      throw new Error("Token manquant ou format incorrect");
+    }
+    const token = authHeader.substring(7);
+    const decoded = jwt.verify(token, "09765a3505e4151d3bcb3d6f58f4d17d2d874862", {
+      audience: "url-shortener"
+      // vérifier que le token est destiné à notre application
+    });
+    return decoded;
+  } catch (err) {
+    console.error("Erreur de v\xE9rification du token :", err);
+    throw createError({
+      statusCode: 401,
+      statusMessage: "Token invalide ou expir\xE9"
+    });
+  }
+};
 const callback_get = defineEventHandler(async (event) => {
+  const { github } = useRuntimeConfig(event);
+  await getValidatedQuery(event, CodeSchema.parse);
+  try {
+    const response = await $fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        Accept: "application/json"
+      },
+      body: {
+        client_id: github.clientId,
+        client_secret: github.clientSecret,
+        code
+        // Code récupéré depuis l'URL
+      }
+    });
+    const { access_token } = response;
+    const userData = await $fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${access_token}`
+      }
+    });
+    const tokenSecret = "09765a3505e4151d3bcb3d6f58f4d17d2d874862";
+    const token = jwt.sign(userData, tokenSecret, {
+      expiresIn: "1h",
+      // Durée d'expiration du token
+      subject: userData.login,
+      // Identifiant de l'utilisateur (login GitHub)
+      audience: "url-shortener"
+      // Public visé par le token
+    });
+    let decoded = null;
+    try {
+      decoded = jwt.verify(
+        token,
+        "09765a3505e4151d3bcb3d6f58f4d17d2d874862",
+        {
+          audience: "url-shortener"
+          // optionnel: vérifier l'audience pour s'assurer que le token est bien à destination de notre application
+        }
+      );
+    } catch (err) {
+      console.error(err);
+    }
+    const isJwtValid = decoded !== null;
+    if (isJwtValid) {
+      console.log("Token g\xE9n\xE9r\xE9 et valid\xE9:", token);
+    } else {
+      throw new Error("Le token est invalide.");
+    }
+    const user = await requireUser(event);
+    console.log("Utilisateur authentifi\xE9:", user);
+  } catch (error) {
+    console.error("Erreur lors de la r\xE9cup\xE9ration du token OAuth ou des donn\xE9es utilisateur :", error);
+    throw new Error("Erreur lors de l'authentification GitHub");
+  }
 });
 
 const callback_get$1 = /*#__PURE__*/Object.freeze({
@@ -950,10 +1030,19 @@ const callback_get$1 = /*#__PURE__*/Object.freeze({
 });
 
 const login_get = defineEventHandler((event) => {
-  useRuntimeConfig(event);
-  const url = new URL("... ?");
-  url.searchParams.append("?", " ?");
-  return sendRedirect(event, "?");
+  const { github } = useRuntimeConfig(event);
+  console.log("Client ID:", github.clientId);
+  console.log("Redirect URI:", github.redirectUri);
+  if (!github.clientId || !github.redirectUri) {
+    throw new Error("Client ID ou Redirect URI manquant dans la configuration GitHub");
+  }
+  const scope = "user";
+  const url = new URL("http://localhost:3000/auth/callback");
+  url.searchParams.append("client_id", github.clientId);
+  url.searchParams.append("redirect_uri", github.redirectUri);
+  url.searchParams.append("scope", scope);
+  console.log("Redirection vers GitHub:", url.toString());
+  return sendRedirect(event, url.toString());
 });
 
 const login_get$1 = /*#__PURE__*/Object.freeze({
@@ -962,37 +1051,57 @@ const login_get$1 = /*#__PURE__*/Object.freeze({
 });
 
 const links = pgTable("links", {
+  // Colonne 'slug' utilisée comme clé primaire
   slug: text().primaryKey(),
+  // Colonne 'url' obligatoire (non-null) pour stocker l'URL associée
   url: text().notNull(),
+  // Colonne 'title' obligatoire pour stocker le titre associé au lien
   title: text().notNull(),
+  // Colonne 'max_visits' pour définir un nombre maximum de visites autorisées (optionnel)
   max_visits: integer(),
+  // Colonne 'available_at' obligatoire pour spécifier la date/heure de disponibilité du lien
   available_at: timestamp().notNull(),
+  // Colonne 'expired_at' pour spécifier la date/heure d'expiration du lien (optionnelle)
   expired_at: timestamp(),
+  // Colonne 'created_at' obligatoire pour indiquer la date/heure de création du lien
   created_at: timestamp().notNull(),
+  // Colonne 'update_at' obligatoire pour la date/heure de dernière mise à jour du lien
   update_at: timestamp().notNull()
 });
 
 const tags = pgTable("tags", {
-  id: text().primaryKey(),
+  // Colonne 'id' utilisée comme clé primaire, de type texte
+  id: integer().primaryKey(),
+  // Colonne 'name' obligatoire et unique pour stocker le nom du tag
   name: text().unique().notNull(),
+  // Colonne 'color' obligatoire pour stocker la couleur associée au tag
   color: text().notNull()
 });
 
 const visits = pgTable("visits", {
+  // Colonne 'id' utilisée comme clé primaire, de type texte
   id: text().primaryKey(),
+  // Colonne 'link_id' obligatoire pour faire référence au lien visité
   link_id: text().notNull(),
+  // Colonne 'created_at' obligatoire pour enregistrer la date et l'heure de la visite
   created_at: timestamp().notNull(),
+  // Colonne 'ip' obligatoire pour enregistrer l'adresse IP de l'utilisateur
   ip: text().notNull(),
+  // Colonne 'user_agent' obligatoire pour stocker les informations du User-Agent de l'utilisateur
   user_agent: text().notNull()
 });
 
 const link_tags = pgTable(
   "link_tags",
+  // Nom de la table dans la base de données
   {
+    // Colonne 'link_slug' qui référence la colonne 'slug' de la table 'links'
     link_slug: text().references(() => links.slug).notNull(),
-    tag_id: text().references(() => tags.id).notNull()
+    // Colonne 'tag_id' qui référence la colonne 'id' de la table 'tags'
+    tag_id: integer().references(() => tags.id).notNull()
   },
   (columns) => ({
+    // Définition de la clé primaire composite basée sur 'link_slug' et 'tag_id'
     pk: primaryKey({ columns: [columns.link_slug, columns.tag_id] })
   })
 );
@@ -1058,19 +1167,25 @@ const links_post = defineEventHandler(async (event) => {
     url: String(body.url),
     slug,
     title: body.title || null,
-    // Optionnel
     max_visits: body.max_visits || null,
-    // Optionnel
     available_at: new Date(body.available_at || Date.now()),
     expired_at: body.expired_at ? new Date(body.expired_at) : null,
     created_at: /* @__PURE__ */ new Date(),
     update_at: /* @__PURE__ */ new Date()
   }).returning().then((res) => res[0]);
+  if (body.tags && Array.isArray(body.tags)) {
+    for (const tagId of body.tags) {
+      await db.insert(link_tags).values({
+        link_slug: newLink.slug,
+        tag_id: tagId
+      });
+    }
+  }
   return {
     statusCode: 201,
     body: {
       message: "URL raccourcie cr\xE9\xE9e avec succ\xE8s.",
-      shortLink: `https://yourdomain.com/${newLink.slug}`,
+      shortLink: `http://localhost:3000/links/${newLink.slug}`,
       // Le lien court généré
       link: newLink
     }
@@ -1100,6 +1215,7 @@ const _slug__get = defineEventHandler(async (event) => {
   if (!slug) {
     throw createError({
       statusCode: 400,
+      // Erreur 400 : Mauvaise requête
       statusMessage: "Slug manquant dans la requ\xEAte."
     });
   }
@@ -1107,6 +1223,7 @@ const _slug__get = defineEventHandler(async (event) => {
   if (!link) {
     throw createError({
       statusCode: 404,
+      // Erreur 404 : Ressource non trouvée
       statusMessage: "Lien non trouv\xE9 pour le slug fourni."
     });
   }
