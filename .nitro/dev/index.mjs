@@ -3,7 +3,7 @@ import { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parentPort, threadId } from 'node:worker_threads';
-import { getRequestHeader, splitCookiesString, setResponseHeader, setResponseStatus, send, defineEventHandler, handleCacheHeaders, createEvent, fetchWithEvent, isEvent, eventHandler, setHeaders, sendRedirect, proxyRequest, createApp, createRouter as createRouter$1, toNodeListener, lazyEventHandler, createError, getRouterParam, getQuery as getQuery$1, readBody, getValidatedQuery } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/h3/dist/index.mjs';
+import { getRequestHeader, splitCookiesString, setResponseHeader, setResponseStatus, send, defineEventHandler, handleCacheHeaders, createEvent, fetchWithEvent, isEvent, eventHandler, setHeaders, sendRedirect, proxyRequest, createApp, createRouter as createRouter$1, toNodeListener, lazyEventHandler, createError, getRouterParam, getQuery as getQuery$1, readBody, getValidatedQuery, getHeader, sendError } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/h3/dist/index.mjs';
 import { provider, isWindows } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/std-env/dist/index.mjs';
 import destr from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/destr/dist/index.mjs';
 import { createHooks } from 'file://C:/Users/PC/Downloads/UTL%20SHORTENER%20REAL/APIShortener/node_modules/hookable/dist/index.mjs';
@@ -946,30 +946,11 @@ parentPort?.on("message", async (msg) => {
 const CodeSchema = z.object({
   code: z.string().min(1, { message: "Le code d'authentification est requis." })
 });
-const requireUser = async (event) => {
-  try {
-    const authHeader = event.headers["authorization"];
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      throw new Error("Token manquant ou format incorrect");
-    }
-    const token = authHeader.substring(7);
-    const decoded = jwt.verify(token, "09765a3505e4151d3bcb3d6f58f4d17d2d874862", {
-      audience: "url-shortener"
-      // vérifier que le token est destiné à notre application
-    });
-    return decoded;
-  } catch (err) {
-    console.error("Erreur de v\xE9rification du token :", err);
-    throw createError({
-      statusCode: 401,
-      statusMessage: "Token invalide ou expir\xE9"
-    });
-  }
-};
 const callback_get = defineEventHandler(async (event) => {
   const { github } = useRuntimeConfig(event);
-  await getValidatedQuery(event, CodeSchema.parse);
+  const { code } = await getValidatedQuery(event, CodeSchema.parse);
   try {
+    console.log("Demande de token GitHub...");
     const response = await $fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: {
@@ -982,14 +963,26 @@ const callback_get = defineEventHandler(async (event) => {
         // Code récupéré depuis l'URL
       }
     });
+    console.log("R\xE9ponse de GitHub:", response);
     const { access_token } = response;
+    console.log("R\xE9cup\xE9ration des donn\xE9es utilisateur...");
     const userData = await $fetch("https://api.github.com/user", {
       headers: {
         Authorization: `Bearer ${access_token}`
       }
     });
+    console.log("Donn\xE9es utilisateur r\xE9cup\xE9r\xE9es:", userData);
+    console.log("G\xE9n\xE9ration du token JWT...");
     const tokenSecret = "09765a3505e4151d3bcb3d6f58f4d17d2d874862";
-    const token = jwt.sign(userData, tokenSecret, {
+    const payload = {
+      login: userData.login,
+      // Identifiant GitHub
+      id: userData.id,
+      // ID utilisateur GitHub
+      email: userData.email
+      // Email (si disponible)
+    };
+    const token = jwt.sign(payload, tokenSecret, {
       expiresIn: "1h",
       // Durée d'expiration du token
       subject: userData.login,
@@ -997,27 +990,7 @@ const callback_get = defineEventHandler(async (event) => {
       audience: "url-shortener"
       // Public visé par le token
     });
-    let decoded = null;
-    try {
-      decoded = jwt.verify(
-        token,
-        "09765a3505e4151d3bcb3d6f58f4d17d2d874862",
-        {
-          audience: "url-shortener"
-          // optionnel: vérifier l'audience pour s'assurer que le token est bien à destination de notre application
-        }
-      );
-    } catch (err) {
-      console.error(err);
-    }
-    const isJwtValid = decoded !== null;
-    if (isJwtValid) {
-      console.log("Token g\xE9n\xE9r\xE9 et valid\xE9:", token);
-    } else {
-      throw new Error("Le token est invalide.");
-    }
-    const user = await requireUser(event);
-    console.log("Utilisateur authentifi\xE9:", user);
+    return { token };
   } catch (error) {
     console.error("Erreur lors de la r\xE9cup\xE9ration du token OAuth ou des donn\xE9es utilisateur :", error);
     throw new Error("Erreur lors de l'authentification GitHub");
@@ -1037,7 +1010,7 @@ const login_get = defineEventHandler((event) => {
     throw new Error("Client ID ou Redirect URI manquant dans la configuration GitHub");
   }
   const scope = "user";
-  const url = new URL("http://localhost:3000/auth/callback");
+  const url = new URL("https://github.com/login/oauth/authorize");
   url.searchParams.append("client_id", github.clientId);
   url.searchParams.append("redirect_uri", github.redirectUri);
   url.searchParams.append("scope", scope);
@@ -1153,7 +1126,35 @@ const links_get$1 = /*#__PURE__*/Object.freeze({
   default: links_get
 });
 
+function requireUser(event) {
+  try {
+    const authHeader = getHeader(event, "Authorization");
+    console.log({ authHeader });
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      throw createError({
+        statusCode: 401,
+        message: "Token manquant"
+      });
+    }
+    const token = authHeader.substring(7);
+    console.log("Token extrait :", token);
+    const decoded = jwt.verify(token, "09765a3505e4151d3bcb3d6f58f4d17d2d874862", {
+      audience: "url-shortener"
+      // vérifier que le token est destiné à notre application
+    });
+    return decoded;
+  } catch (err) {
+    console.error("Erreur de v\xE9rification du token :", err);
+    throw sendError(event, createError({
+      statusCode: 401,
+      message: "Token invalide ou expir\xE9"
+    }));
+  }
+}
+
 const links_post = defineEventHandler(async (event) => {
+  const user = requireUser(event);
+  console.log(user);
   const db = useDrizzle();
   const body = await readBody(event);
   if (!body || !body.url) {

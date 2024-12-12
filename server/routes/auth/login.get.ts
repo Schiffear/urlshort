@@ -9,7 +9,7 @@ export default defineEventHandler(event => {
   }
 
   const scope = 'user'; // Scopes demandés
-  const url = new URL('http://localhost:3000/auth/callback');
+  const url = new URL('https://github.com/login/oauth/authorize');
 
   // Client ID pour identifier votre app
   url.searchParams.append('client_id', github.clientId);

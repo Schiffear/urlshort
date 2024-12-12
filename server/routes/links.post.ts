@@ -2,8 +2,11 @@ import { links } from "~/database/schema";
 import { useDrizzle } from "~/utils/drizzle";
 import { nanoid } from "nanoid"; // Génère un slug unique.
 import { link_tags } from "~/database/schema";
+import { requireUser } from "~/utils/auth";
 
 export default defineEventHandler(async (event) => {
+  const user = requireUser(event)
+  console.log(user)
   const db = useDrizzle();
   const body = await readBody(event);
 
